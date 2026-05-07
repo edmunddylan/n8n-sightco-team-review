@@ -62,7 +62,7 @@ A few things in here that aren't obvious from a quick scan:
 
 I'm Edmund. I work in optical retail in Singapore and I'm working my way into CRM and Revenue Operations — specifically the bit where AI actually has to do something useful, not just sit in a slide deck.
 
-Right now I'm studying for the Salesforce Administrator certification, learning n8n in the slot between work and dinner, and building things like this repo to prove I can do the work, not just talk about it. Long-term plan is to land in CRM consulting and eventually relocate to New York.
+Right now I'm studying for the Salesforce Administrator certification, learning n8n in the slot between work and dinner, and building things like this repo to prove I can do the work, not just talk about it. Long-term plan is to land in CRM based roles.
 
 If you're hiring for CRM/RevOps roles where AI integration matters, I'd be happy to talk.
 
@@ -77,23 +77,6 @@ More workflows will be added as I build them. Roughly in order:
 - [ ] Schedule Trigger for nightly batches
 - [ ] AI Lead Enricher capstone (n8n + Claude + Salesforce)
 - [ ] RAG-powered sales knowledge bot (Supabase vector store)
-
----
-
-*Last updated: May 2026*
-Right now I'm studying for the Salesforce Administrator certification, learning n8n in the slot between work and dinner, and building things like this repo to prove I can do the work, not just talk about it. Long-term plan is to land in CRM consulting and eventually relocate to New York.
-
-If you're hiring for CRM/RevOps roles where AI integration matters, I'd be happy to talk.
-
----
-
-## What's next
-
-- [ ] Day 11 — Structured JSON output from Claude
-- [ ] Day 12 — Gmail node for automated outreach
-- [ ] Day 13 — Schedule Trigger for nightly batches
-- [ ] Day 18 — Capstone: AI Lead Enricher (n8n + Claude + Salesforce)
-- [ ] Phase 2 — RAG-powered sales knowledge bot (Supabase vector store)
 
 ---
 
