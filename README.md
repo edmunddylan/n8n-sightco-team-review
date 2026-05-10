@@ -80,4 +80,10 @@ More workflows will be added as I build them. Roughly in order:
 
 ---
 
+
+## Local Development
+
+This repo is now managed locally with Git from the terminal.
+
+
 *Last updated: May 2026*
