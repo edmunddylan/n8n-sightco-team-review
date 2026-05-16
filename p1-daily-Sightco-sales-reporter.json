@@ -1,0 +1,376 @@
+{
+  "name": "SightCo Daily Sales Reporter",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -128
+      ],
+      "id": "aff26d78-ec82-48e4-afaa-d42b0878cf76",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID_HERE",
+          "mode": "list",
+          "cachedResultName": "SightCo Daily Sales Sample",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wbG5zsXqO06NUr6w0gLJ_svawai0g8aUXWSNI92aIeM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "daily_sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wbG5zsXqO06NUr6w0gLJ_svawai0g8aUXWSNI92aIeM/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "date",
+              "lookupValue": "={{ $now.format('yyyy-MM-dd')}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        0,
+        -128
+      ],
+      "id": "9542acab-ee25-4d10-a1d9-9af1575d8ad5",
+      "name": "Get row(s) in sheet",
+      "alwaysOutputData": false,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tAWM5bxkPsMSH9qf",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        384,
+        -144
+      ],
+      "id": "fcdb6136-ff33-48fa-862d-c6a03f6eda8e",
+      "name": "HTTP Request",
+      "executeOnce": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "T0gxkLvDTKPuokDk",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Unwrap Anthropic's envelope\nconst anthropicResponse = $input.first().json;\nconst rawText = anthropicResponse.content[0].text;\n\n// Defensive extraction: find the first { and the last } to grab just the JSON\nconst firstBrace = rawText.indexOf('{');\nconst lastBrace = rawText.lastIndexOf('}');\n\nif (firstBrace === -1 || lastBrace === -1) {\n  throw new Error('No JSON object found in Claude response: ' + rawText);\n}\n\nconst jsonString = rawText.substring(firstBrace, lastBrace + 1);\n\n// Parse the extracted JSON\nconst report = JSON.parse(jsonString);\n\nreturn [{ json: report }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        -144
+      ],
+      "id": "d4179195-553e-43b8-8fdc-54679f0a0a97",
+      "name": "Parse Claude Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pull all upstream rows\nconst rows = $input.all().map(item => item.json);\n\n// Build the body as a real JS object\nconst body = {\n  model: \"claude-sonnet-4-6\",\n  max_tokens: 1024,\n  messages: [\n    {\n      role: \"user\",\n      content: `Generate a daily sales report for SightCo Optical from the raw data below. Return ONLY a valid JSON object, no preamble, no markdown fences. The JSON object must contain these fields: total_revenue as a number (sum of revenue_sgd across all rows), total_transactions as a number (sum of transactions), total_walk_ins as a number (sum of walk_ins), top_performer_name as a string (the staff_name with the highest revenue_sgd), top_performer_revenue as a number, match and find duplicates for top_performer_revenue, top_performer_transactions as a number, top_category as a string (the most frequent value in top_category column), and issues as a string (one-sentence summary of the notes column across all rows, or the literal text No issues reported if notes are empty or trivial). Raw data: ${JSON.stringify(rows)}`\n    }\n  ]\n};\n\n// Return the body wrapped for n8n\nreturn [{ json: { body: JSON.stringify(body) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        -128
+      ],
+      "id": "b6ea3301-7752-4bbe-8a75-b3b79bcbae9e",
+      "name": "Stringify() Body to Claude"
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $input.first().json;\n\nconst message = `📊 SightCo Daily Sales Report\n\n💰 Total Revenue: SGD ${report.total_revenue}\n🛍️ Total Transactions: ${report.total_transactions}\n🚶 Walk-ins: ${report.total_walk_ins}\n\n🏆 Top Performer: ${report.top_performer_name} — SGD ${report.top_performer_revenue} / ${report.top_performer_transactions} txns\n📈 Top Category: ${report.top_category}\n\n⚠️ Issues: ${report.issues}\n\n— SightCo Reporter`;\n\nreturn [{ json: { message } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -144
+      ],
+      "id": "55d70332-86b5-4240-abc8-c50afda17adb",
+      "name": "Format Whatsapp Message"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cda61c71-744f-4fab-b4c3-18e048b67a67",
+              "leftValue": "={{ $json.error_code }}",
+              "rightValue": "\"\" ",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1216,
+        -144
+      ],
+      "id": "a605e748-8ba9-4ada-8964-e9c46c620d0b",
+      "name": "Check Delivery Status"
+    },
+    {
+      "parameters": {
+        "errorMessage": "==Twilio delivery failed. Error code: {{ $('Send WhatsApp via Twilio').item.json.error_code }} — {{ $('Send WhatsApp via Twilio').item.json.error_message }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        -48
+      ],
+      "id": "c8155051-541d-4bd6-8be9-59ffeb312115",
+      "name": "Twillio Delivery Failed",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/YOUR_TWILIO_ACCOUNT_SID/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "whatsapp:+YOUR_PHONE_NUMBER"
+            },
+            {
+              "name": "From",
+              "value": "whatsapp:+14155238886"
+            },
+            {
+              "name": "Body",
+              "value": "=={{ $json.message }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1008,
+        -144
+      ],
+      "id": "bee08abc-d2e4-450b-b02c-7be8d5e42caf",
+      "name": "Send WhatsApp via Twilio",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "62ij1k2smN9vLQTl",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -224,
+        64
+      ],
+      "id": "d6fe7e5c-6cb0-4686-ba2a-2226c29d0a7e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "content": "PRODUCTION CAVEAT — WhatsApp 24-Hour Service Window\n\nThis workflow runs at 7am SGT daily, but freeform WhatsApp messages\nrequire the recipient to have messaged Twilio's sandbox number within\nthe last 24 hours.\n\nFor production deployment, replace freeform message with a Meta-approved\nMessage Template (requires WhatsApp Business API account + Meta Business.",
+        "height": 272,
+        "width": 496
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -48,
+        176
+      ],
+      "typeVersion": 1,
+      "id": "4663f409-e941-49a2-bb9a-e63af495014e",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Stringify() Body to Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stringify() Body to Claude": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Format Whatsapp Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Whatsapp Message": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp via Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Delivery Status": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Twillio Delivery Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp via Twilio": {
+      "main": [
+        [
+          {
+            "node": "Check Delivery Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "fc47f38d-9366-4cf2-9398-372f91526a41",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d4a91fc8cec27f6983e20ef780ada7db590afaa9a027c3cebca04781f4e2c6ee"
+  },
+  "id": "nMVSXamKuzpys8c3",
+  "tags": []
+}
