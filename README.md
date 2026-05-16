@@ -1,6 +1,6 @@
 # n8n-sightco-team-review
 
-An n8n workflow that automates sales team performance reviews for **SightCo Optical** — a fictional 50-person eyewear retailer I use as a reference scenario. The workflow is real; the company is made up.
+An n8n workflow that automates sales team performance reviews for **SightCo Optical** — a fictional 10-person eyewear retailer I use as a reference scenario. The workflow is real; the company is made up.
 
 ---
 
