@@ -1,14 +1,6 @@
 # n8n-sightco-team-review
 
-n8n workflows that automate sales reporting and team review for **SightCo Optical** — a fictional 5-person eyewear retailer I use as a reference scenario. The workflows are real; the company is made up.
-
----
-
-## What this is
-
-Most small retailers run their CRM on Google Sheets and a manager's Monday morning routine. These workflows replace parts of that routine with structured automation — n8n handles the orchestration, Claude handles the judgment calls (tier classification, summarization, enrichment), and Google Sheets stays as the source of truth.
-
-The point isn't to be clever. It's to show that an SMB-grade workflow stack can be built without writing custom code, if you know how to wire the pieces together properly.
+n8n workflows that automate sales reporting, lead enrichment, and team review for **SightCo Optical** — a fictional eyewear retailer used as a reference scenario. The workflows are real; the company is made up.
 
 ---
 
@@ -16,69 +8,68 @@ The point isn't to be clever. It's to show that an SMB-grade workflow stack can 
 
 | File | What it does |
 |---|---|
-| `day10-performance-tier-logic.json` | Classifies sales staff into Top Performer / Solid / Needs Coaching based on revenue thresholds using a Switch node, and writes the tier back to the sheet |
-| `p1-sightco-daily-sales-reporter.json` | Reads today's sales rows from Google Sheets, sends them to Claude for structured JSON summarization, formats a daily report, and delivers via WhatsApp (Twilio sandbox). Runs daily at 7am SGT via Schedule Trigger. |
+| `day10-performance-tier-logic.json` | Classifies sales staff into tiers based on revenue thresholds, writes the tier back to the sheet. |
+| `p1-sightco-daily-sales-reporter.json` | Sheets → Claude (structured summary) → WhatsApp (Twilio). Runs daily at 7am SGT. |
+| `p2-salesforce-lead-enricher.json` | Salesforce contact → Claude (firmographic inference from email domain) → write back to 4 custom fields. |
 
 Each file imports cleanly into any n8n instance.
 
 ---
 
-## Project 1 — Daily Sales Reporter: how it works
+## Architecture
 
-Each node has one job. Separation of concerns means: change the format? Edit Format node only. Change recipient? Edit Twilio node only. Change Claude's prompt? Edit Stringify node only.
+Same shape across both AI-powered workflows: **read → AI step → defensive parse → side effect**, with fail-loudly checks at the boundaries.
 
----
+**P1 — Daily Sales Reporter**
 
-## Patterns worth pointing out
+Schedule → Get rows → Build body → Anthropic → Parse → Format → Twilio → IF: error_code empty? → Stop & Error if not
 
-A few things in here that aren't obvious from a quick scan:
+**P2 — Salesforce Lead Enricher**
 
-- **Two-Code-node API integration pattern** — Code BEFORE HTTP to build the request body in JavaScript (sidesteps n8n's body-mode quirks), Code AFTER HTTP to parse the response. Universal pattern for any future API integration.
-- **Defensive JSON parsing** — LLMs occasionally return chatty preamble ("Looking at the data, here's the report: {...}") despite explicit instructions not to. Parsing finds the JSON inside whatever Claude returns via `indexOf('{')` and `lastIndexOf('}')`, rather than demanding perfect output.
-- **Explicit upstream node references** — `$('Get row(s) in sheet').item.json.row_number` reaches back to the source of truth rather than relying on data carried through multiple intermediate nodes.
-- **`$now.format('yyyy-MM-dd')`** for dynamic date filtering at runtime, swapped in only after the hardcoded version proved the filter mechanic worked.
-- **IF + Stop & Error** to read Twilio's response and fail loudly on synchronous delivery errors (e.g., body validation failures, 24h window expiry). `error_code` is the diagnostic field.
+Get contacts → IF: Id exists? → Build body → Anthropic → IF: content exists? → Parse → Update contact → IF: success? → Stop & Error on any "no"
 
 ---
 
-## Known production constraints (documented honestly)
+## Patterns used
 
-### WhatsApp 24-hour service window
+- **Two-Code-node API integration** — Code node before HTTP builds the body; Code node after parses defensively. Reusable for any LLM/API.
+- **Defensive JSON parsing** — `indexOf('{')` / `lastIndexOf('}')` extracts JSON from whatever Claude returns, including chatty preamble.
+- **Source-of-Truth Rule** — reach back to where data was born (`$('Get many contacts').item.json.Id`), not wherever it's been carried through.
+- **Fail-loudly at canonical placements** — after a read (catch empty), after an API call (catch errors before the parser chokes), after a side effect (catch sync failures).
+- **API acceptance ≠ real-world result** — HTTP 200 means request accepted, not action succeeded. Sync errors are caught; async confirmation is documented as a known gap.
 
-Meta's WhatsApp Business policy: businesses can only send freeform messages to a user within 24 hours of that user's last inbound message. Outside that window, only Meta-approved Message Templates can be sent.
+---
 
-In sandbox: this fires as Twilio error code `63016`.
+## Known production constraints
 
-**For production deployment**, this workflow's `Send WhatsApp via Twilio` node should be replaced with:
-- WhatsApp Business API account (not sandbox)
-- Meta Business verification (3–7 days)
-- Per-template approval from Meta
+**P1 — WhatsApp 24-hour service window.** Meta only allows freeform messages within 24h of a user's last inbound. Outside the window, Twilio returns error `63016`. Production requires a Meta-approved Message Template.
 
-### Async delivery failures aren't caught synchronously
+**P1 — Async delivery failures not caught synchronously.** IF check reads Twilio's immediate response. Async delivery failures (e.g. recipient not in sandbox, `63007`) require Twilio status callback webhooks. Out of scope.
 
-The current IF check reads errors that appear in Twilio's immediate HTTP response (e.g., 63016 window expiry, body validation failures). Errors that occur during async delivery — e.g., recipient not in sandbox (`63007`) — are returned later via Twilio's webhook callbacks, not the initial response.
+**P2 — Enrichment is inferred, not verified.** Claude infers company/industry from the email domain. Demonstrates the pattern; production would use a data API (Clearbit, Apollo, ZoomInfo) for verified firmographics. Workflow shape unchanged; only the enrichment source changes.
 
-**For production**, async delivery handling requires either:
-- A polling loop (Wait node → HTTP Request to Twilio's Message Status URL)
-- A separate n8n workflow that receives Twilio's status callback webhook
-
-Both are intentionally out of scope for this learning project. Acknowledging the gap rather than hiding it.
+**P2 — Synchronous-only write verification.** `Check Write Success` reads Salesforce's immediate response. Catches validation rules, deleted fields, FLS. Does NOT catch async processes (flows, triggers, downstream validation). Production would poll modified-date after Wait, or subscribe to Platform Events.
 
 ---
 
 ## Running these yourself
 
-1. Clone the repo
-2. Install n8n (`npm install n8n -g`, or use Docker)
-3. Import any `.json` workflow via n8n's import UI
-4. Replace placeholders:
-   - `YOUR_SHEET_ID_HERE` → your own Google Sheet ID
-   - Phone numbers → your test phone (must be in Twilio sandbox)
-5. Configure credentials:
-   - Google Sheets OAuth2
-   - Anthropic API key (Header Auth with `x-api-key`)
-   - Twilio Basic Auth (Account SID + Auth Token)
-6. Join the Twilio WhatsApp sandbox from your phone (`join <code>` to Twilio's sandbox number)
-7. Click execute
+1. Clone the repo, install n8n (`npm install n8n -g` or Docker)
+2. Import any `.json` via n8n's import UI
+3. Replace placeholders (sheet IDs, phone numbers, Salesforce instance URL)
+4. Configure credentials in n8n: Google Sheets (OAuth2), Anthropic (Header Auth), Twilio (Basic Auth), Salesforce (OAuth2 via External Client App)
+5. For P1: join the Twilio WhatsApp sandbox (`join <code>` to the sandbox number)
+6. For P2: create 4 custom fields on Contact (`Inferred_Company__c`, `Inferred_Industry__c`, `Company_Size_Guess__c`, `Outreach_Angle__c`)
+7. Execute
 
 ---
+
+## What's next
+
+- [x] Project 1 — Daily Sales Reporter
+- [x] Project 2 — Salesforce Lead Enricher
+- [ ] Project 3 — RAG-powered sales knowledge bot (Supabase vector store + Claude)
+
+---
+
+*Last updated: 29 May 2026*

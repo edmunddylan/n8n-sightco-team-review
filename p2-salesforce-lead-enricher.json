@@ -1,0 +1,431 @@
+{
+  "name": "p2-salesforce-lead-enricher.json",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        -64
+      ],
+      "id": "f694c8e5-ebe1-401c-8b98-ab0abed8d60f",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "getAll",
+        "limit": 2,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        -64
+      ],
+      "id": "b34ac4f7-51a8-4aea-93d9-f7e4244b359b",
+      "name": "Get many contacts",
+      "credentials": {
+        "salesforceOAuth2Api": {
+          "id": "F1QCIlrQKPhMMPd8",
+          "name": "Salesforce account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        512,
+        -64
+      ],
+      "id": "81933637-696f-476e-baf9-67053efda801",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "T0gxkLvDTKPuokDk",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Enrich leads based on the domain of the email of the contact",
+        "height": 272,
+        "width": 288
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        400,
+        -160
+      ],
+      "typeVersion": 1,
+      "id": "830914d6-55b8-491f-b6fb-d292ca7d4388",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "update",
+        "contactId": "={{ $('Get many contacts').item.json.Id }}",
+        "updateFields": {
+          "customFieldsUi": {
+            "customFieldsValues": [
+              {
+                "fieldId": "Inferred_Company__c",
+                "value": "={{ $('Parse Claude Response').item.json.inferred_company }}"
+              },
+              {
+                "fieldId": "Inferred_Industry__c",
+                "value": "={{ $('Parse Claude Response').item.json.inferred_industry }}"
+              },
+              {
+                "fieldId": "Company_Size_Guess__c",
+                "value": "={{ $('Parse Claude Response').item.json.company_size_guess }}"
+              },
+              {
+                "fieldId": "Outreach_Angle__c",
+                "value": "={{ $('Parse Claude Response').item.json.outreach_angle }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        -64
+      ],
+      "id": "90c84a8f-9800-499d-9a86-bdf3821f13e2",
+      "name": "Update a contact",
+      "credentials": {
+        "salesforceOAuth2Api": {
+          "id": "F1QCIlrQKPhMMPd8",
+          "name": "Salesforce account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Grab the contact from Salesforce\nconst contact = $input.first().json;\n\nconst firstName = contact.FirstName || '';\nconst lastName = contact.LastName || '';\nconst email = contact.Email || '';\n\n// Build the Claude request body\nconst body = {\n  model: \"claude-sonnet-4-6\",\n  max_tokens: 1024,\n  messages: [\n    {\n      role: \"user\",\n      content: `You are a B2B lead enrichment assistant. Below is a raw CRM contact. Infer likely firmographic context FROM THE EMAIL DOMAIN ONLY. These are educated guesses, not verified facts — mark them as inferred and do not fabricate specific numbers.\n\nReturn ONLY a valid JSON object (no preamble, no markdown fences) with these fields:\n- inferred_company: likely company name based on the email domain\n- inferred_industry: likely industry\n- company_size_guess: one of \"Small\", \"Mid-market\", or \"Enterprise\"\n- outreach_angle: one concise sentence suggesting an opening angle for sales outreach, based on likely industry pain points\n\nContact:\nFirst name: ${firstName}\nLast name: ${lastName}\nEmail: ${email}`\n    }\n  ]\n};\n\nreturn [{ json: { body: JSON.stringify(body) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        -64
+      ],
+      "id": "9cb39d4b-fc85-4989-b1f4-a4c9181d708e",
+      "name": "Build Enrichment Body"
+    },
+    {
+      "parameters": {
+        "jsCode": "const anthropicResponse = $input.first().json;\nconst rawText = anthropicResponse.content[0].text;\n\nconst firstBrace = rawText.indexOf('{');\nconst lastBrace = rawText.lastIndexOf('}');\nif (firstBrace === -1 || lastBrace === -1) {\n  throw new Error('No JSON object found in Claude response: ' + rawText);\n}\n\nconst jsonString = rawText.substring(firstBrace, lastBrace + 1);\nreturn [{ json: JSON.parse(jsonString) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        -64
+      ],
+      "id": "7d5932a3-5150-4f1b-95e6-2b6ba939d241",
+      "name": "Parse Claude Response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5782c177-aa2f-49d4-8ffe-7182383755a8",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        -64
+      ],
+      "id": "cc356b86-6c75-4d85-81b6-431f3d749a00",
+      "name": "Check Write Success"
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Salesforce write failed for contact. Errors: {{ JSON.stringify($('Update a contact').item.json.errors) }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        -48
+      ],
+      "id": "e50a2e4f-38db-47fc-b747-2e1b666d6c7b",
+      "name": "Stop and Error"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8a5ea735-cb51-431d-a0f7-f7721d8a74d8",
+              "leftValue": "={{ $json.content[0] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        -64
+      ],
+      "id": "5f46054c-27e5-4722-9e19-fc689395987d",
+      "name": "Check Claude Response"
+    },
+    {
+      "parameters": {
+        "errorMessage": "==Claude API returned an error: {{ JSON.stringify($('HTTP Request').item.json.error) }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        896,
+        96
+      ],
+      "id": "a0d40517-6dcb-46d4-8704-f11ed6f2fdc9",
+      "name": "Claude Api Error"
+    },
+    {
+      "parameters": {
+        "errorMessage": "==No Contact returned from Salesforce Read - nothing to enrich "
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        272,
+        160
+      ],
+      "id": "21babea3-3109-42d8-abb0-efba061be02b",
+      "name": "Stop and Error1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0f7ff44f-bc03-4ca3-8a5e-4ad9834d1621",
+              "leftValue": "={{ $json.Id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        96,
+        -64
+      ],
+      "id": "f667ec98-24b5-4dd1-aee5-eeb0880618a5",
+      "name": "Check Contact Excist"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get many contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many contacts": {
+      "main": [
+        [
+          {
+            "node": "Check Contact Excist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Check Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Enrichment Body": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Update a contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a contact": {
+      "main": [
+        [
+          {
+            "node": "Check Write Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Write Success": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Stop and Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude Api Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Contact Excist": {
+      "main": [
+        [
+          {
+            "node": "Build Enrichment Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop and Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "da0308f4-5bff-4616-a4d9-9523ca03713a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d4a91fc8cec27f6983e20ef780ada7db590afaa9a027c3cebca04781f4e2c6ee"
+  },
+  "id": "yV3C9gDXTIlKd2gU",
+  "tags": []
+}
