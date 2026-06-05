@@ -8,7 +8,7 @@ n8n workflows that automate sales reporting, lead enrichment, and team review fo
 
 | File | What it does |
 |---|---|
-| `day10-performance-tier-logic.json` | Classifies sales staff into tiers based on revenue thresholds, writes the tier back to the sheet. |
+| `performance-tier-logic.json` | Classifies sales staff into tiers based on revenue thresholds, writes the tier back to the sheet. |
 | `p1-sightco-daily-sales-reporter.json` | Sheets → Claude (structured summary) → WhatsApp (Twilio). Runs daily at 7am SGT. |
 | `p2-salesforce-lead-enricher.json` | Salesforce contact → Claude (firmographic inference from email domain) → write back to 4 custom fields. |
 
