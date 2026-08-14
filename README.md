@@ -68,8 +68,6 @@ Get contacts → IF: Id exists? → Build body → Anthropic → IF: content exi
 
 - [x] Project 1 — Daily Sales Reporter
 - [x] Project 2 — Salesforce Lead Enricher
-- [ ] Project 3 — RAG-powered sales knowledge bot (Supabase vector store + Claude)
 
----
 
 *Last updated: 29 May 2026*
